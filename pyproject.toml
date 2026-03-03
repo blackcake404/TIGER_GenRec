@@ -1,0 +1,16 @@
+[project]
+name = "llm4rec"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "notebook>=7.5.3",
+    "numpy>=2.4.2",
+    "pandas>=3.0.1",
+    "sentence-transformers>=5.2.3",
+    "torch>=2.10.0",
+    "transformers>=5.2.0",
+]
