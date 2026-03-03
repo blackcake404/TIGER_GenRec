@@ -10,7 +10,7 @@ def evaluate_generation(model, test_df, train_df, item_to_semantic, semantic_to_
     model.eval()
     results = []
 
-    history_map = train_df.sort_values("time").groupby("user_id")["item_id"].apply(list).to_dict()
+    history_map = train_df.sort_values("time").groupby("user_id")["parent_asin"].apply(list).to_dict()
 
     for _, row in test_df.iterrows():
         user_id = row["user_id"]
@@ -29,13 +29,19 @@ def evaluate_generation(model, test_df, train_df, item_to_semantic, semantic_to_
 
         outputs = model.generate(
             input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"],
             max_length=10,
             num_beams=k,
             num_return_sequences=k,
+            decoder_start_token_id=tokenizer.pad_token_id,
             early_stopping=True,
         )
 
         predictions = [tokenizer.decode(output, skip_special_tokens=False) for output in outputs]
+
+        print(f"User ID: {user_id}, Target ASIN: {target_asin}, Predictions: {predictions}")
+
+        break
 
         is_hit = any(semantic_to_item.get(pred.strip(), None) == target_asin for pred in predictions)
         results.append(is_hit)
@@ -44,24 +50,20 @@ def evaluate_generation(model, test_df, train_df, item_to_semantic, semantic_to_
 
 if __name__ == "__main__":
     model_name = "google-t5/t5-base"
-    tokenizer = T5Tokenizer.from_pretrained(model_name)
-    model = T5ForConditionalGeneration.from_pretrained(model_name)
-
-    # Add codeword tokens to tokenizer
-    codebook_size = 256
-    new_tokens = []
-    for i in range(codebook_size):
-        new_tokens.append(f"<codeword1_{i}>")
-        new_tokens.append(f"<codeword2_{i}>")
-        new_tokens.append(f"<codeword3_{i}>")
-
-    # Add extra unique tokens to tokenizer
-    for i in range(1000, 1100):
-        new_tokens.append(f"<unique_identity_token_{i}>")
-
-    new_added_tokens = tokenizer.add_tokens(new_tokens)
-    model.resize_token_embeddings(len(tokenizer))
+    tokenizer = T5Tokenizer.from_pretrained("checkpoints/tiger_model_epoch_6")
+    model = T5ForConditionalGeneration.from_pretrained("checkpoints/tiger_model_epoch_6")
     model.to(device)
+
+    # 1. 检查你的特殊 Token 是否真的在词表里
+    test_token = "<unique_identity_token_1001>"
+    token_id = tokenizer.convert_tokens_to_ids(test_token)
+    print(f"Token: {test_token}, ID: {token_id}")
+
+    # 2. 检查 Tokenizer 是如何切分你的输入字符串的
+    test_str = "<codeword1_1> <unique_identity_token_1001>"
+    encoded = tokenizer.encode(test_str, add_special_tokens=False)
+    decoded_steps = [tokenizer.decode([tid]) for tid in encoded]
+    print(f"Tokenization steps: {decoded_steps}")
 
     # load user history data
     train_data = pd.read_csv("dataset/train_data.csv")
@@ -78,7 +80,7 @@ if __name__ == "__main__":
 
     evaluate_generation(
         model,
-        test_data,
+        eval_data,
         train_data,
         item_to_semantic_ids,
         semantic_ids_to_item,

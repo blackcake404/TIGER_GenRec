@@ -84,6 +84,29 @@ def tiger_dataloader(data_df, tokenizer, batch_size=32, shuffle=False):
         pin_memory=True,
     )
 
+def sample_check(model, tokenizer, device, train_dataloader):
+    model.eval()
+    with torch.no_grad():
+        batch = next(iter(train_dataloader))
+        input_ids = batch["input_ids"][:1].to(device)
+        labels = batch["labels"][:1]
+
+        labels[labels == -100] = tokenizer.pad_token_id
+        ground_truth = tokenizer.decode(labels[0], skip_special_tokens=False)
+        
+        outputs = model.generate(
+            input_ids=input_ids,
+            max_length=10,
+            num_beams=2,
+            decoder_start_token_id=tokenizer.pad_token_id,
+            early_stopping=True,
+        )
+        prediction = tokenizer.decode(outputs[0], skip_special_tokens=False)
+        print("\n" + "="*50)
+        print(f"Ground Truth: {ground_truth}, Prediction: {prediction}")
+        print("="*50 + "\n")
+    model.train()
+
 def train_tiger_model(model, train_dataloader, optimizer, scheduler, device, num_epochs):
     model.train()
 
@@ -93,12 +116,12 @@ def train_tiger_model(model, train_dataloader, optimizer, scheduler, device, num
 
         for batch in progress_bar:
             input_ids = batch["input_ids"].to(device)
-            attenttion_mask = batch["attention_mask"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
 
             outputs = model(
                 input_ids=input_ids,
-                attention_mask=attenttion_mask,
+                attention_mask=attention_mask,
                 labels=labels,
             )
 
@@ -117,6 +140,10 @@ def train_tiger_model(model, train_dataloader, optimizer, scheduler, device, num
         print(f"Epoch {epoch+1} completed. Average Loss: {avg_epoch_loss:.4f}")
 
         model.save_pretrained(f"checkpoints/tiger_model_epoch_{epoch+1}")
+        tokenizer.save_pretrained(f"checkpoints/tiger_model_epoch_{epoch+1}")
+
+        if (epoch + 1) % 5 == 0:
+            sample_check(model, tokenizer, device, train_dataloader)
 
 if __name__ == "__main__":
     model_name = "google-t5/t5-base"
@@ -160,12 +187,12 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
     )
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
 
-    optimizer = AdamW(model.parameters(), lr=5e-5, weight_decay=0.01)
+    optimizer = AdamW(model.parameters(), lr=3e-4, weight_decay=0.01)
 
-    num_epochs = 10
+    num_epochs = 50
     total_steps = len(train_dataloader) * num_epochs
     scheduler = get_linear_schedule_with_warmup(
         optimizer,
